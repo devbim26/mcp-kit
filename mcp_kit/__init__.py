@@ -7,7 +7,8 @@
 from __future__ import annotations
 
 from .errors import ToolError, call_http
+from .paths import RootPolicy
 
 __version__ = "0.1.0"
 
-__all__ = ["__version__", "ToolError", "call_http"]
+__all__ = ["__version__", "ToolError", "call_http", "RootPolicy"]
