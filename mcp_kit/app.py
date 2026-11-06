@@ -5,14 +5,17 @@
 """
 from __future__ import annotations
 
+import functools
+import inspect
 import os
 import time
 from contextlib import asynccontextmanager
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, get_type_hints
 
 import uvicorn
 from fastapi import FastAPI
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 from starlette.middleware.cors import CORSMiddleware
 
 from .audit import AuditLog
@@ -98,13 +101,82 @@ class McpApp:
 
     # --- инструменты ---------------------------------------------------
 
-    def add_tool(self, fn: Callable[..., Any], **kwargs) -> Callable[..., Any]:
-        """Зарегистрировать инструмент (реализация — Task 7)."""
-        raise NotImplementedError
+    def add_tool(self, fn: Callable[..., Any], *,
+                 name: Optional[str] = None,
+                 title: Optional[str] = None,
+                 description: Optional[str] = None,
+                 read_only: bool = False,
+                 destructive: bool = False,
+                 idempotent: bool = False,
+                 open_world: bool = False) -> Callable[..., Any]:
+        """Зарегистрировать инструмент проекта.
+
+        Обёртка добавляет аудит; аннотации MCP описывают, безопасен ли
+        вызов (read-only, идемпотентен, не разрушает данные).
+        """
+        wrapped = self._wrap(fn)
+        annotations = ToolAnnotations(
+            title=title,
+            readOnlyHint=read_only,
+            destructiveHint=destructive,
+            idempotentHint=idempotent,
+            openWorldHint=open_world)
+        self.mcp.tool(name=name, title=title, description=description,
+                      annotations=annotations)(wrapped)
+        return wrapped
 
     def tool(self, **kwargs):
-        """Декоратор инструмента (реализация — Task 7)."""
-        raise NotImplementedError
+        """Декоратор инструмента: `app.tool(read_only=True)(fn)`."""
+        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+            return self.add_tool(fn, **kwargs)
+        return decorator
+
+    def _wrap(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        """Обёртка с аудитом и корректными аннотациями типов.
+
+        `from __future__ import annotations` превращает аннотации в строки.
+        FastMCP вычисляет их через `get_type_hints` в глобалах СВОЕГО
+        модуля — проектные pydantic-модели там не видны. Поэтому резолвим
+        аннотации здесь, в глобалах проекта, и кладём готовые объекты.
+        """
+        tool_name = getattr(fn, "__name__", "tool")
+        audit = self.audit
+
+        if inspect.iscoroutinefunction(fn):
+            @functools.wraps(fn)
+            async def wrapper(*args: Any, **kwargs: Any) -> Any:
+                started = time.perf_counter()
+                try:
+                    out = await fn(*args, **kwargs)
+                except Exception as exc:
+                    audit.write(tool_name, False,
+                                (time.perf_counter() - started) * 1000,
+                                error=str(exc))
+                    raise
+                audit.write(tool_name, True,
+                            (time.perf_counter() - started) * 1000)
+                return out
+        else:
+            @functools.wraps(fn)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                started = time.perf_counter()
+                try:
+                    out = fn(*args, **kwargs)
+                except Exception as exc:
+                    audit.write(tool_name, False,
+                                (time.perf_counter() - started) * 1000,
+                                error=str(exc))
+                    raise
+                audit.write(tool_name, True,
+                            (time.perf_counter() - started) * 1000)
+                return out
+
+        try:
+            wrapper.__annotations__ = get_type_hints(fn, include_extras=True)
+        except Exception:
+            wrapper.__annotations__ = dict(
+                getattr(fn, "__annotations__", {}))
+        return wrapper
 
 
 def run(app: McpApp,
