@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+from .audit import AuditLog
 from .auth import bearer_middleware, check_key
 from .errors import ToolError, call_http
 from .paths import RootPolicy
@@ -13,4 +14,4 @@ from .paths import RootPolicy
 __version__ = "0.1.0"
 
 __all__ = ["__version__", "ToolError", "call_http", "RootPolicy",
-           "bearer_middleware", "check_key"]
+           "bearer_middleware", "check_key", "AuditLog"]
