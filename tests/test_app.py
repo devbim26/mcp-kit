@@ -94,3 +94,27 @@ def test_cors_allows_configured_origin(monkeypatch):
 
     assert r.headers.get("access-control-allow-origin") == \
         "https://example.com"
+
+
+def test_cors_preflight_to_mcp_is_not_blocked_by_bearer(monkeypatch):
+    """OPTIONS /mcp должен отвечать CORS-заголовками, а не 401.
+
+    Если CORS зарегистрирован до bearer, preflight уходит в bearer
+    первым и OPTIONS к /mcp получает 401 (без CORS-заголовков).
+    Браузер не сможет установить соединение через туннель с CORS.
+    """
+    monkeypatch.setenv("TEST_KEY", "secret")
+    app = _app(key_env="TEST_KEY", cors_origins=["https://example.com"])
+
+    with TestClient(app.app) as client:
+        r = client.options(
+            "/mcp",
+            headers={
+                "Origin": "https://example.com",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+
+    assert r.status_code == 200
+    assert r.headers.get("access-control-allow-origin") == \
+        "https://example.com"

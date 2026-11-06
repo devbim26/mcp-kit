@@ -55,6 +55,12 @@ class McpApp:
         app = FastAPI(title=f"{self.name} MCP", version=self.version,
                       lifespan=lifespan)
 
+        # Bearer регистрируется первым (внутренний слой), CORS — после
+        # (внешний слой). В Starlette последний зарегистрированный middleware
+        # выполняется на запросе первым, поэтому CORS обрабатывает
+        # OPTIONS-preflight к /mcp раньше, чем bearer успевает вернуть 401.
+        app.middleware("http")(bearer_middleware(self.key_env))
+
         if self.cors_origins:
             app.add_middleware(
                 CORSMiddleware,
@@ -62,8 +68,6 @@ class McpApp:
                 allow_methods=["*"],
                 allow_headers=["*"],
                 expose_headers=["mcp-session-id", "mcp-protocol-version"])
-
-        app.middleware("http")(bearer_middleware(self.key_env))
 
         @app.get("/health")
         async def health() -> dict:
