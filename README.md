@@ -5,8 +5,12 @@
 регистрирует свои инструменты и получает готовое Streamable HTTP
 приложение; HTTP-обвязку не пишет.
 
+Агентам: порядок работы — по скиллу
+[`mcp-harness`](https://github.com/devbim26/skills/tree/main/mcp-harness)
+(см. [AGENTS.md](AGENTS.md)). Этот репозиторий — каркас и шаблоны.
+
 Рабочий пример обвязки сервера плагином DeepSeek Harness —
-`../drawing5/plugin/dsh-plugin-drawing5/`.
+[`dsh-plugin-drawing5`](https://github.com/devbim26/dsh-plugin-drawing5).
 
 ## Что внутри
 
