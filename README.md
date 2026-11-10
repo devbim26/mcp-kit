@@ -237,7 +237,7 @@ dsh-plugin-myproject/
         toolCallTimeoutMs: 120000
 - insert:
     - id: myproject-skill
-      name: './index.js'
+      name: 'dsh-plugin-myproject'
       config:
         serverUrl: !!js process.env.MYPROJECT_SERVER_URL ?? "https://myproject.example.com"
         tokenEnv: MYPROJECT_API_KEY
@@ -249,6 +249,12 @@ dsh-plugin-myproject/
   Латиница, цифры, `_`, `-`, до 32 символов. **Один `serverName` на всю
   конфигурацию** — дубль, и второй клиент не поднимется
   («server is disconnected»).
+* Строка модуля: `name` — **bare-имя пакета плагина**
+  (`'dsh-plugin-myproject'`, dsh 0.1.0-rc.8+). Относительный путь
+  `'./index.js'` dsh НЕ резолвит (ищет от корневого конфига профиля) —
+  плагин падает с «plugin(s) failed to load: ./index.js». Override-строка
+  из профиля обязана сохранить то же `name` бандла, иначе замена
+  отбрасывается («name mismatch, skipping»).
 * `url` — адрес **с** `/mcp` (FastMCP/официальный python MCP).
   Переменную окружения храните без `/mcp` — патч дописывает.
 * `transport: streamable-http` — для уже запущенного сервера;
@@ -302,9 +308,10 @@ DSH показывает весь `README.md` пакета при клике н�
 
 ## index.js: скилл и подсказка про токен
 
-Модуль — Cordis-строка: DSH вызывает `apply(ctx, config)` при старте.
-Типовые задачи — зарегистрировать скилл, проверить токен, написать в лог
-адрес сервера.
+Модуль — Cordis-модуль пакета: патч подключает его строкой с bare-именем
+(`name: 'dsh-plugin-myproject'` — относительный `'./index.js'` dsh не
+резолвит). DSH вызывает `apply(ctx, config)` при старте. Типовые задачи —
+зарегистрировать скилл, проверить токен, написать в лог адрес сервера.
 
 ```js
 import { readFile } from 'node:fs/promises'
@@ -512,7 +519,19 @@ def test_patch_has_single_server_name():
     text = (PLUGIN / "cordis.patch.yml").read_text(encoding="utf-8")
     assert text.count("serverName:") == 1
     assert "myproject" in text
+
+def test_module_row_uses_package_name():
+    text = (PLUGIN / "cordis.patch.yml").read_text(encoding="utf-8")
+    assert "'./index.js'" not in text   # dsh не резолвит относительные пути
+    assert "'dsh-plugin-myproject'" in text
 ```
+
+Полный e2e-харнесс — настоящий dsh, одноразовый профиль, fake-модель и
+реальный вызов инструмента через агентный цикл — в рабочем примере
+[drawing5](https://github.com/devbim26/dsh-plugin-drawing5):
+`e2e/run-in-dsh.mjs` (учтите: dsh 0.2.2 требует node ≥ 24.9 — скрипт
+сам ставит рантайм; e2e-скрипты держите вне каталога `test/`, иначе
+`node --test` исполнит их как модульные тесты).
 
 ## Типовые сбои
 
@@ -526,6 +545,8 @@ def test_patch_has_single_server_name():
 | Карточка плагина показывает старый README | DSH не перезапущен; Discover стоит на старом коммите; персональная сборка не пересобрана | Закрыть все процессы DSH; обновить `commit` в индексе; пересобрать персональный tgz |
 | Два набора инструментов / конфликт | ручной `- insert:` с тем же `serverName` поверх плагина | Удалить вставку; если нужен свой URL — строка **без** `insert:` с тем же `id` |
 | «activates no layer» в логе | в `package.json` нет `dsh.bundle.patch` | Добавить манифест бандла |
+| «plugin(s) failed to load: ./index.js» | относительный путь в `name` строки модуля | Bare-имя пакета: `name: 'dsh-plugin-myproject'` |
+| Override строки модуля не применился | в замене другой `name` («name mismatch, skipping») | Сохранить `name` бандла в override-строке |
 | pnpm заблокировал build-скрипт | git-установка с `prepare` | Разрешить в `pnpm-workspace.yaml` профиля (`allowBuilds`) или ставить готовый tarball |
 
 ## Чек-лист перед отдачей клиенту
